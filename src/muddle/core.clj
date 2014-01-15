@@ -437,6 +437,14 @@
         (for [[letter value n] letters,  _ (range n)]
           [letter value])))
 
+(defn rack-bonus 
+  "50 point bonus for using all 7 letters. 
+   Check the tiles played rather than having none left since we may have started with less than 7."
+  [bd word]
+  (if (= RACK-SIZE (count (filter #(vacant? bd %) (for [[sq l] word] sq))))
+    50 
+    0))
+
 (defn score-word [bd word]
   (let [multiplier (reduce * (for [[sq c] word] (word-multiplier bd sq)))
         score      (reduce + (for [[sq c] word] (* (letter-multiplier bd sq) (SCORES c))))]
@@ -452,7 +460,8 @@
         0))))
 
 (defn score [bd dn word]
-  (+ (score-word bd word)
+  (+ (rack-bonus bd word)
+     (score-word bd word)
      (score-cross-words bd dn word)))
 
 (defn play-move [[good in-score bd rack bag]]
