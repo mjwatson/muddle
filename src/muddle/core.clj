@@ -170,6 +170,8 @@
 
 ;; The model is easier if we create sentinel squares that reflect the square round the edge of the board.
 
+(def BOARD-SIZE 15)
+
 (def ROW [0 1])
 
 (def COL [1 0])
@@ -249,7 +251,7 @@
      (mapv vec (partition n (map #(->Square (if (not= \_ %) %) INITIAL-CROSS-CHECK) rows))))))
 
 (defn create-board []
-  (make-board 15))
+  (make-board BOARD-SIZE))
 
 (defn rows [board] 
   (let [n (count board)]
