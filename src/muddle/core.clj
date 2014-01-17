@@ -238,6 +238,9 @@
 (defn cross-score [board dn square]
   (-> (value board square) (x-score (DIRECTION dn))))
 
+(defn has-cross-word? [board dn square]
+  (< 0 (cross-score board dn square)))
+
 (defn make-board 
   ([n] 
    (make-board n (repeat (* n n) nil)))
@@ -448,7 +451,7 @@
 (defn score-cross-words [bd dn word]
   (reduce +
     (for [[sq c] word]
-      (if (vacant? bd sq)
+      (if (and (vacant? bd sq) (has-cross-word? bd dn sq))
         (* (word-multiplier bd sq) 
            (+ (* (letter-multiplier bd sq) (SCORES c))
               (cross-score bd dn sq)))
