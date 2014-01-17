@@ -516,9 +516,13 @@
         [true new-score new-bd new-rack new-bag])
       [false score bd rack bag])))
 
-(defn play-all [bd rack bag]
+(defn play-all [bd bag]
+  (let [ [rack bag] (take-letters '() RACK-SIZE bag) ]
    (take-while (fn [[good score bd rk bg]] (and good (not (empty? rk))))
-      (iterate play-move [true 0 bd rack bag])))
+      (iterate play-move [true 0 bd rack bag]))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;; Entry point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn -main
   "I don't do a whole lot ... yet."
@@ -526,5 +530,5 @@
   ;; work around dangerous default behaviour in Clojure
   (alter-var-root #'*read-eval* (constantly false))
   (println "Hello, World!")
-  (doseq [_ (play-all (create-board) "BANANAS" (make-bag))]
+  (doseq [_ (play-all (create-board) (make-bag))]
     ))
