@@ -492,12 +492,48 @@
      (score-word bd word)
      (score-cross-words bd dn word)))
 
+;;;;;;;;;;;;;;;;;   Command line user ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn parse-line [s]
+  (re-matches #"(DOWN|ACROSS):([0-9]+):([0-9]+):([A-Z]+)" s))
+
+(def DN-MAP { "DOWN" COL, "ACROSS" ROW })
+
+(defn read-word [s]
+  (if-let [[_ dir-word x y ls] (parse-line s)]
+   (let [dn                 (DN-MAP dir-word)
+         word               (map vector (iterate (partial next-square dn) [(Integer. x) (Integer. y)]) ls)]
+    [dn word])))
+
+(defn valid-play? [bd word dn]
+  (and (:complete (get-node nodes (map second word)))
+       (every? (fn [[sq l]] (possible? bd sq l dn)) word)))
+
+(defn from-rack [board word rack]
+  (loop [word word r rack out []]
+    (if-let [[sq l] (first word)]
+      (cond (not (vacant? board sq))  (recur (rest word) rack               (conj out [sq l l]))
+            (has-letter? rack l)      (recur (rest word) (play rack l)      (conj out [sq l l]))
+            (has-letter? rack :blank) (recur (rest word) (play rack :blank) (conj out [sq l :blank]))
+            :else                     nil)
+      [rack out])))
+
+(defn read-play [board rack line]
+  (when-let [ [dn word] (read-word line) ]
+    (when (valid-play? board word dn)
+      (if-let [ [new-rack played-word] (from-rack board word rack) ]
+        [played-word new-rack dn]))))
+
+(defn human-move [board rack]
+  (println "Enter move: [DOWN|ACROSS]:x:y:word")
+  (or (read-play board (make-rack rack) (read-line)) (recur board rack)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Play the game ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defrecord Game [players board bag unable-to-play])
 
 (defn in-play? [game]
-  "We are still in play until someone is out of tiles."
+  "We are still in play until someone is out of tiles or no-one can go."
   (and (not (some (comp empty? :rack) (:players game)))
        (< (:unable-to-play game) (count (:players game)))))
 
@@ -508,34 +544,49 @@
     (println v)
     (rand-nth xs)))
 
-(defn play-move [{:keys [board players bag] :as game} player-n]
+(defn ai-move [board rack]
+  (let [ ps (board-plays rack nodes board) ]
+    (if (not (empty? ps))
+      (rand-max-key (fn [[ws r dn]] (score board dn ws)) ps))))
+
+(defn play-move [{:keys [board players bag] :as game} player-n move?]
   (let [{:keys [current-score rack] :as player} (players player-n)
         ps     (board-plays (:rack player) nodes board)]
-    (if (empty? ps)
-      [nil (update-in game [:unable-to-play] inc)]
-      (let [[words r dn :as p]  (rand-max-key (fn [[ws r dn]] (score board dn ws)) ps)
-             new-board          (update-board nodes board words)
+    (if-let [ [words r dn :as p] (move? board (:rack player)) ] 
+      (let [ new-board          (update-board nodes board words)
              [new-rack new-bag] (take-letters (as-letters r) RACK-SIZE bag)
              new-score          (+ (score board dn words) (:current-score player))
              new-player         (merge player { :current-score new-score :rack new-rack })
              new-players        (assoc players player-n new-player)]
-        [words (->Game new-players new-board new-bag 0)]))))
+        [words (->Game new-players new-board new-bag 0)])
+      [nil (update-in game [:unable-to-play] inc)])))
+
 
 (defn play-turn [game player-n]
   (let [player (-> game :players (get player-n))]
    (println "-------------------------------")
    (println "Player:" (:name player))
    (print-rack (:rack player))
-   (let [[move new-game] (play-move game player-n)]
+   (let [move?           (if (= :ai (:kind player)) ai-move human-move)
+         [move new-game] (play-move game player-n move?)]
      (if (nil? move)
        (println "<No move>")
        (show-update (:board game) move))
      (doseq [p (:players new-game)] (println p))
      new-game)))
 
+
+(defn create-player [s]
+  (if (.startsWith s "ai:")
+    { :name (.substring s 3) :kind :ai    :current-score 0 }
+    { :name s                :kind :human :current-score 0 }))
+
+(def DEFAULT-PLAYERS [{ :name "AI" :kind :ai :current-score 0 }])
+
 (defn read-players [args]
-  [ { :name "Player 1" :kind :ai :current-score 0 } 
-    { :name "Player 2" :kind :ai :current-score 0 } ])
+  (if (empty? args)
+    DEFAULT-PLAYERS
+    (map create-player args)))
 
 (defn draw-initial-rack [bag players]
   (loop [bag bag players players out []]
