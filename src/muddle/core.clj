@@ -116,7 +116,7 @@
 (defn take-letters [rack rack-size bag]
   (if (or (= (count rack) rack-size)
           (empty? bag))
-    [rack bag]
+    [(seq rack) bag]
     (let [[b [l score]] (draw-letter bag)]
       (recur (conj rack l) rack-size b))))
 
@@ -384,9 +384,8 @@
    (doseq [row (rows new-board)]
     (println (clojure.string/join " " (map (partial show-character old-board new-board) row))))))
 
-(defn show-update [board [words rack]]
-    (print-board board (update-board nodes board words))
-    (print-rack rack))
+(defn show-update [board word]
+    (print-board board (update-board nodes board word)))
 
 ;;;;;;;;;;;;;;;;;;;;;;  Search for all possible word moves ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -495,6 +494,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Play the game ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defrecord Game [players board bag unable-to-play])
+
+(defn in-play? [game]
+  "We are still in play until someone is out of tiles."
+  (and (not (some (comp empty? :rack) (:players game)))
+       (< (:unable-to-play game) (count (:players game)))))
+
 (defn rand-max-key [f s]
   (let [ x  (apply max-key f s)
          v  (f x)
@@ -502,29 +508,59 @@
     (println v)
     (rand-nth xs)))
 
-(defn play-move [[good in-score bd rack bag]]
-  (println "-----------------")
-  (print-rack rack)
-  (let [ps (board-plays rack nodes bd)]
-    (if (not (empty? ps))
-      (let [[words r dn :as p] (rand-max-key (fn [[ws r dn]] (score bd dn ws)) ps)
-            new-bd             (update-board nodes bd words)
-            [new-rack new-bag] (take-letters (as-letters r) RACK-SIZE bag)
-            new-score          (+ (score bd dn words) in-score)]
-        (show-update bd p)
-        (println "SCORE: " new-score)
-        [true new-score new-bd new-rack new-bag])
-      [false score bd rack bag])))
+(defn play-move [{:keys [board players bag] :as game} player-n]
+  (let [{:keys [current-score rack] :as player} (players player-n)
+        ps     (board-plays (:rack player) nodes board)]
+    (if (empty? ps)
+      [nil (update-in game [:unable-to-play] inc)]
+      (let [[words r dn :as p]  (rand-max-key (fn [[ws r dn]] (score board dn ws)) ps)
+             new-board          (update-board nodes board words)
+             [new-rack new-bag] (take-letters (as-letters r) RACK-SIZE bag)
+             new-score          (+ (score board dn words) (:current-score player))
+             new-player         (merge player { :current-score new-score :rack new-rack })
+             new-players        (assoc players player-n new-player)]
+        [words (->Game new-players new-board new-bag 0)]))))
 
-(defn play-all [bd bag]
-  (let [ [rack bag] (take-letters '() RACK-SIZE bag) ]
-   (take-while (fn [[good score bd rk bg]] (and good (not (empty? rk))))
-      (iterate play-move [true 0 bd rack bag]))))
+(defn play-turn [game player-n]
+  (let [player (-> game :players (get player-n))]
+   (println "-------------------------------")
+   (println "Player:" (:name player))
+   (print-rack (:rack player))
+   (let [[move new-game] (play-move game player-n)]
+     (if (nil? move)
+       (println "<No move>")
+       (show-update (:board game) move))
+     (doseq [p (:players new-game)] (println p))
+     new-game)))
 
+(defn read-players [args]
+  [ { :name "Player 1" :kind :ai :current-score 0 } 
+    { :name "Player 2" :kind :ai :current-score 0 } ])
+
+(defn draw-initial-rack [bag players]
+  (loop [bag bag players players out []]
+    (if-let [p (first players)]
+      (let [[rack bag] (take-letters '() RACK-SIZE bag)]
+        (recur bag (rest players) (conj out (assoc p :rack rack))))
+        [bag out])))
+
+(defn start-game [args]
+  (let [ players       (read-players args)
+         n             (count players)
+         board         (create-board)
+         bag           (make-bag)
+         [bag players] (draw-initial-rack bag players)
+         game          (->Game players board bag 0)]
+    (doseq [_ 
+     (take-while in-play?
+      (reductions play-turn 
+        game
+        (cycle (range n))))])
+    (println "Game Over.")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Entry point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn -main [& args]
   (alter-var-root #'*read-eval* (constantly false))
-  (doseq [_ (play-all (create-board) (make-bag))]))
+  (start-game args))
 
