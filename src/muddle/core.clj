@@ -353,7 +353,7 @@
 
 ;; Just show update as capitals
 (defn show-update [board [words rack]]
-  (let [ uppercase-words (for [[sq c] words] [sq (first (.toUpperCase (str c)))]) ]
+  (let [ uppercase-words (for [[sq c t] words] [sq (first (.toUpperCase (str c)))]) ]
     (print-board (update-board nodes board uppercase-words))
     (print-rack rack)))
 
@@ -377,8 +377,8 @@
   * If the square is already full, then thats the only choice."
   [board square rack]
   (if (vacant? board square)
-    (for [l (get-letters rack) c (play-as l) ] [c (play rack l)])
-    [[(get-value board square) rack]]))
+    (for [l (get-letters rack) c (play-as l) ] [c (play rack l) l])
+    [[(get-value board square) rack nil]]))
 
 (defn adjacent? [board square]
   (or (= square [7 7])
@@ -390,8 +390,8 @@
   (children? [_]
     (alive? board square))
   (children [_]
-    (for [[l r] (possible-tiles board square rack) :when (and (possible? board square l row-or-column) (contains? node l)) ]
-      (->tile board row-or-column r (node l) (conj word [square l]) (next-square row-or-column square) (or adjacent (adjacent? board square))))))
+    (for [[l r t] (possible-tiles board square rack) :when (and (possible? board square l row-or-column) (contains? node l)) ]
+      (->tile board row-or-column r (node l) (conj word [square l t]) (next-square row-or-column square) (or adjacent (adjacent? board square))))))
 
 (defn find-words [board row-or-column rack node square]
   (->> (tree-seq children? children (->tile board row-or-column rack node [] square false))
@@ -439,21 +439,21 @@
   "50 point bonus for using all 7 letters. 
    Check the tiles played rather than having none left since we may have started with less than 7."
   [bd word]
-  (if (= RACK-SIZE (count (filter #(vacant? bd %) (for [[sq l] word] sq))))
+  (if (= RACK-SIZE (count (filter #(vacant? bd %) (for [[sq l t] word] sq))))
     50 
     0))
 
 (defn score-word [bd word]
-  (let [multiplier (reduce * (for [[sq c] word] (word-multiplier bd sq)))
-        score      (reduce + (for [[sq c] word] (* (letter-multiplier bd sq) (SCORES c))))]
+  (let [multiplier (reduce * (for [[sq c t] word] (word-multiplier bd sq)))
+        score      (reduce + (for [[sq c t] word] (* (letter-multiplier bd sq) (SCORES t))))]
     (* multiplier score)))
 
 (defn score-cross-words [bd dn word]
   (reduce +
-    (for [[sq c] word]
+    (for [[sq c t] word]
       (if (and (vacant? bd sq) (has-cross-word? bd dn sq))
         (* (word-multiplier bd sq) 
-           (+ (* (letter-multiplier bd sq) (SCORES c))
+           (+ (* (letter-multiplier bd sq) (SCORES t))
               (cross-score bd dn sq)))
         0))))
 
