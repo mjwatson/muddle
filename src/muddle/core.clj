@@ -524,11 +524,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Entry point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn -main
-  "I don't do a whole lot ... yet."
-  [& args]
-  ;; work around dangerous default behaviour in Clojure
+(defn -main [& args]
   (alter-var-root #'*read-eval* (constantly false))
-  (println "Hello, World!")
-  (doseq [_ (play-all (create-board) (make-bag))]
-    ))
+  (doseq [_ (play-all (create-board) (make-bag))]))
+
