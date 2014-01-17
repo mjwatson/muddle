@@ -2,13 +2,7 @@
   (:require [clojure.java.io])
   (:gen-class))
 
-; Characters and scores
-; Board with multipliers
-; Bag
-; Players x Tiles
-; For vertical and horizontal play:
-;  list of anchors
-;  cross-check
+;;;;;;;;;;;;;;  Letters with points and frequencies ;;;;;;;;;;;;;;;
 
 (def letters 
   (partition 3
@@ -41,6 +35,8 @@
           :blank  0 2]))
 
 (def SCORES (into {} (for [[c s _] letters] [c s])))
+
+;;;;;;;;;;;;;;  List of special tiles on the board ;;;;;;;;;;;;;;;
 
 (def TILES {
   [0   0] {:word 3}
@@ -105,6 +101,12 @@
   [ 5 13] {:letter 3}
   [ 9 13] {:letter 3} })
 
+;;;;;;;;;;;;;;  Bag of letters ;;;;;;;;;;;;;;;
+
+(defn make-bag []
+  (into [] 
+        (for [[letter value n] letters,  _ (range n)]
+          [letter value])))
 
 (defn draw-letter [bag]
   (let [index (rand-int (count bag))]
@@ -256,8 +258,7 @@
 (defn cols [board]
   (apply mapv vector (rows board)))
 
-
-;;; Search for possible words placements 
+;;;;;;;;;;;;;;;;;; Update the board to reflect latest move ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn steps [bd sq dn]
   (take-while (partial get-in bd) 
@@ -352,7 +353,10 @@
   (let [ uppercase-words (for [[sq c] words] [sq (first (.toUpperCase (str c)))]) ]
     (print-board (update-board nodes board uppercase-words))
     (print-rack rack)))
-;; --- Create a virtual tree of the word space
+
+;;;;;;;;;;;;;;;;;;;;;;  Search for all possible word moves ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; We dynamically create a tree of all possible plays and filter out the ones that are real words
 
 (defprotocol ITree
   (children? [tree])
@@ -413,6 +417,9 @@
     (show-update bd p)
     (println "--------------")))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;  Score a move ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defn rand-max-key [f s]
   (let [ x  (apply max-key f s)
          v  (f x)
@@ -431,11 +438,6 @@
 
 (defn word-multiplier [bd sq]
   (get-multiplier :word bd sq))
-
-(defn make-bag []
-  (into [] 
-        (for [[letter value n] letters,  _ (range n)]
-          [letter value])))
 
 (defn rack-bonus 
   "50 point bonus for using all 7 letters. 
@@ -463,6 +465,8 @@
   (+ (rack-bonus bd word)
      (score-word bd word)
      (score-cross-words bd dn word)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;; Play the game ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn play-move [[good in-score bd rack bag]]
   (println "-----------------")
