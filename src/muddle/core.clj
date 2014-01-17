@@ -251,10 +251,6 @@
 (defn create-board []
   (make-board 15))
 
-(defn print-board [board]
-  (doseq [row board]
-    (println (clojure.string/join " " (map #(or (content %) \_) row)))))
-
 (defn rows [board] 
   (let [n (count board)]
     (for [r (range n)] 
@@ -349,13 +345,46 @@
       (update-crosswords nodes words)))
 
 (defn print-rack [r]
-  (println (str "Rack: " (or r "<EMPTY>"))))
+  (println (str "Rack: " (if (not (empty? r)) r "<EMPTY>"))))
 
-;; Just show update as capitals
+;;;;;;;;;;;;;;; Display the board and latest go ;;;;;;;;;;;;;;;;;;;
+
+; Terminal background codes
+
+(def RED   "\33[41m")
+(def PINK  "\33[45m")
+(def BLUE  "\33[44m")
+(def CYAN  "\33[46m")
+(def GREEN "\33[42m")
+(def CLEAR "\33[0m")
+
+(def JUST-PLAYED GREEN)
+
+(def COLOURS {
+  { :word 2 }   PINK
+  { :word 3 }   RED
+  { :letter 2 } CYAN
+  { :letter 3 } BLUE} )
+
+(defn get-format [old-bd new-bd sq]
+  (or (cond (nil? (get-value new-bd sq))
+             (COLOURS (TILES sq))
+            (nil? (get-value old-bd sq))
+             JUST-PLAYED)
+       CLEAR))
+
+(defn show-character [old-bd  new-bd sq] 
+    (str (get-format old-bd new-bd sq) (or (get-value new-bd sq) \_) CLEAR ))
+
+(defn print-board 
+  ([board] (print-board board board))
+  ([old-board new-board]
+   (doseq [row (rows new-board)]
+    (println (clojure.string/join " " (map (partial show-character old-board new-board) row))))))
+
 (defn show-update [board [words rack]]
-  (let [ uppercase-words (for [[sq c t] words] [sq (first (.toUpperCase (str c)))]) ]
-    (print-board (update-board nodes board uppercase-words))
-    (print-rack rack)))
+    (print-board board (update-board nodes board words))
+    (print-rack rack))
 
 ;;;;;;;;;;;;;;;;;;;;;;  Search for all possible word moves ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -378,7 +407,7 @@
   [board square rack]
   (if (vacant? board square)
     (for [l (get-letters rack) c (play-as l) ] [c (play rack l) l])
-    [[(get-value board square) rack nil]]))
+    [[(get-value board square) rack (get-value board square)]]))
 
 (defn adjacent? [board square]
   (or (= square [7 7])
