@@ -245,6 +245,9 @@
    (if (= (count rows) (* n n))
      (mapv vec (partition n (map #(->Square (if (not= \_ %) %) INITIAL-CROSS-CHECK) rows))))))
 
+(defn create-board []
+  (make-board 15))
+
 (defn print-board [board]
   (doseq [row board]
     (println (clojure.string/join " " (map #(or (content %) \_) row)))))
@@ -312,9 +315,6 @@
    (update-all-possible nodes bd (all-squares bd)))
   ([nodes bd sqs]
    (reduce #(assoc-in %1 %2 (update-possible %1 nodes %2)) bd sqs)))
-
-(defn create-board []
-  (make-board 15))
 
 (defn empty-square? [bd sq]
   (nil? (get-value bd sq)))
@@ -420,13 +420,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;  Score a move ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn rand-max-key [f s]
-  (let [ x  (apply max-key f s)
-         v  (f x)
-         xs (filter #(= v (f %)) s) ]
-    (println v)
-    (rand-nth xs)))
-
 (defn get-multiplier [kind bd sq]
   (or (if (vacant? bd sq)
         (if-let [{n kind} (TILES sq)]
@@ -467,6 +460,13 @@
      (score-cross-words bd dn word)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Play the game ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn rand-max-key [f s]
+  (let [ x  (apply max-key f s)
+         v  (f x)
+         xs (filter #(= v (f %)) s) ]
+    (println v)
+    (rand-nth xs)))
 
 (defn play-move [[good in-score bd rack bag]]
   (println "-----------------")
