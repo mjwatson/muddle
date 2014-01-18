@@ -9,7 +9,7 @@
              [\A 1  9  
               \B 3  2 
               \C 3  2 
-              \D 1  4
+              \D 2  4
               \E 1  12 
               \F 4  2 
               \G 2  3 
@@ -18,10 +18,10 @@
               \J 8  1 
               \K 5  1 
               \L 1  4
-              \M 4  2
+              \M 3  2
               \N 1  6
               \O 1  8
-              \P 4  2
+              \P 3  2
               \Q 10 1
               \R 1  6  
               \S 1  4 
@@ -497,6 +497,14 @@
      (score-word bd word)
      (score-cross-words bd dn word)))
 
+(defn show-score [bd dn word]
+  (println "Score: " (score bd dn word) 
+           "["
+              (rack-bonus bd word) ","
+              (score-word bd word) ","
+              (score-cross-words bd dn word) 
+            "]")) 
+
 ;;;;;;;;;;;;;;;;;   Command line user ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn parse-line [s]
@@ -546,7 +554,6 @@
   (let [ x  (apply max-key f s)
          v  (f x)
          xs (filter #(= v (f %)) s) ]
-    (println v)
     (rand-nth xs)))
 
 (defn ai-move [board rack]
@@ -563,8 +570,8 @@
              new-score          (+ (score board dn words) (:current-score player))
              new-player         (merge player { :current-score new-score :rack new-rack })
              new-players        (assoc players player-n new-player)]
-        [words (->Game new-players new-board new-bag 0)])
-      [nil (update-in game [:unable-to-play] inc)])))
+        [words dn (->Game new-players new-board new-bag 0)])
+      [nil nil (update-in game [:unable-to-play] inc)])))
 
 
 (defn play-turn [game player-n]
@@ -573,10 +580,12 @@
    (println "Player:" (:name player))
    (print-rack (:rack player))
    (let [move?           (if (= :ai (:kind player)) ai-move human-move)
-         [move new-game] (play-move game player-n move?)]
+         [move dir new-game] (play-move game player-n move?)]
      (if (nil? move)
        (println "<No move>")
-       (show-update (:board game) move))
+       (do
+         (show-update (:board game) move)
+         (show-score  (:board game) dir move)))
      (doseq [p (:players new-game)] (println p))
      new-game)))
 
