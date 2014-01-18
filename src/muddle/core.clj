@@ -381,8 +381,10 @@
 (defn print-board 
   ([board] (print-board board board))
   ([old-board new-board]
-   (doseq [row (rows new-board)]
-    (println (clojure.string/join " " (map (partial show-character old-board new-board) row))))))
+   (let [ numbers (for [n (range (count (rows new-board)))] (mod n 10)) ]
+    (println " " (clojure.string/join " " numbers))
+    (doseq [[n row] (map vector numbers (rows new-board))]
+     (println n (clojure.string/join " " (map (partial show-character old-board new-board) row)))))))
 
 (defn show-update [board word]
     (print-board board (update-board nodes board word)))
