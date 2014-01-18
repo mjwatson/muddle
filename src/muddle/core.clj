@@ -516,7 +516,7 @@
             (has-letter? rack l)      (recur (rest word) (play rack l)      (conj out [sq l l]))
             (has-letter? rack :blank) (recur (rest word) (play rack :blank) (conj out [sq l :blank]))
             :else                     nil)
-      [rack out])))
+      [r out])))
 
 (defn read-play [board rack line]
   (when-let [ [dn word] (read-word line) ]
