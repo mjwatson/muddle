@@ -136,7 +136,7 @@
 
 (def nodes (->> (words)
                 (filter #(< 1 (count %)))
-                (filter #(= (.toLowerCase %) %))
+                (filter #(= % (.toLowerCase %)))
                 (map #(.toUpperCase %))
                 build-nodes))
 
@@ -525,9 +525,9 @@
 (defn from-rack [board word rack]
   (loop [word word r rack out []]
     (if-let [[sq l] (first word)]
-      (cond (not (vacant? board sq))  (recur (rest word) rack               (conj out [sq l l]))
-            (has-letter? rack l)      (recur (rest word) (play rack l)      (conj out [sq l l]))
-            (has-letter? rack :blank) (recur (rest word) (play rack :blank) (conj out [sq l :blank]))
+      (cond (not (vacant? board sq))  (recur (rest word) r               (conj out [sq l l]))
+            (has-letter? r l)      (recur (rest word) (play r l)      (conj out [sq l l]))
+            (has-letter? r :blank) (recur (rest word) (play r :blank) (conj out [sq l :blank]))
             :else                     nil)
       [r out])))
 
