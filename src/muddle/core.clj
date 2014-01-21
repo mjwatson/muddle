@@ -2,110 +2,62 @@
   (:require [clojure.java.io])
   (:gen-class))
 
-;;;;;;;;;;;;;;  Letters with points and frequencies ;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;  Letters ;;;;;;;;;;;;;;;
 
-(def letters 
-  (partition 3
-             [\A 1  9  
-              \B 3  2 
-              \C 3  2 
-              \D 2  4
-              \E 1  12 
-              \F 4  2 
-              \G 2  3 
-              \H 4  2
-              \I 1  9  
-              \J 8  1 
-              \K 5  1 
-              \L 1  4
-              \M 3  2
-              \N 1  6
-              \O 1  8
-              \P 3  2
-              \Q 10 1
-              \R 1  6  
-              \S 1  4 
-              \T 1  6 
-              \U 1  4
-              \V 4  2  
-              \W 4  2 
-              \X 8  1 
-              \Y 4  2
-              \Z 10 1  
-          :blank  0 2]))
+(def LETTERS 
+ "Letters represented as 3-tuples of LETTER SCORE NUMBER"
+ (partition 3 [
+  \A 1 9      \N 1  6
+  \B 3 2      \O 1  8
+  \C 3 2      \P 3  2
+  \D 2 4      \Q 10 1
+  \E 1 12     \R 1  6  
+  \F 4 2      \S 1  4 
+  \G 2 3      \T 1  6 
+  \H 4 2      \U 1  4
+  \I 1 9      \V 4  2  
+  \J 8 1      \W 4  2 
+  \K 5 1      \X 8  1 
+  \L 1 4      \Y 4  2
+  \M 3 2      \Z 10 1  
+          :blank 0  2]))
 
-(def SCORES (into {} (for [[c s _] letters] [c s])))
+(def SCORES
+  "The SCORE for each LETTER"
+  (into {} (for [[c s _] LETTERS] [c s])))
 
 ;;;;;;;;;;;;;;  List of special tiles on the board ;;;;;;;;;;;;;;;
 
-(def TILES {
-  [0   0] {:word 3}
-  [0   7] {:word 3}
-  [0  14] {:word 3}
-  [ 7  0] {:word 3}
-  [ 7 14] {:word 3}
-  [14  0] {:word 3}
-  [14  7] {:word 3}
-  [14 14] {:word 3}
-  [ 7  7] {:word 2}
-  [ 1  1] {:word 2}
-  [ 2  2] {:word 2}
-  [ 3  3] {:word 2}
-  [ 4  4] {:word 2}
-  [ 4 10] {:word 2}
-  [ 3 11] {:word 2}
-  [ 2 12] {:word 2}
-  [ 1 13] {:word 2}
-  [10  4] {:word 2}
-  [11  3] {:word 2}
-  [12  2] {:word 2}
-  [13  1] {:word 2}
-  [10 10] {:word 2}
-  [11 11] {:word 2}
-  [12 12] {:word 2}
-  [13 13] {:word 2}
+; Use symmetry to define these based on the NWW part of the board
+
+(def base-tiles 
+ {[0   0] {:word   3}
+  [ 1  1] {:word   2}
+  [ 2  2] {:word   2}
+  [ 3  3] {:word   2}
+  [ 4  4] {:word   2}
   [ 5  5] {:letter 3}
   [ 6  6] {:letter 2}
-  [ 8  8] {:letter 2}
-  [ 9  9] {:letter 3}
-  [ 5  9] {:letter 3}
-  [ 9  5] {:letter 3}
-  [ 8  6] {:letter 2}
-  [ 6  8] {:letter 2}
-  [ 0  3] {:letter 2}
-  [ 0 11] {:letter 2}
-  [14  3] {:letter 2}
-  [14 11] {:letter 2}
+  [ 7  7] {:word   2}
+  [ 7  0] {:word   3}
   [ 3  0] {:letter 2}
-  [11  0] {:letter 2}
-  [ 3 14] {:letter 2}
-  [11 14] {:letter 2}
-  [ 2  6] {:letter 2}
-  [ 2  8] {:letter 2}
-  [ 7  3] {:letter 2}
-  [ 3  7] {:letter 2}
-  [ 7 11] {:letter 2}
-  [11  7] {:letter 2}
-  [12  6] {:letter 2}
-  [12  8] {:letter 2}
-  [ 6  2] {:letter 2}
-  [ 8  2] {:letter 2}
-  [ 6 12] {:letter 2}
-  [ 8 12] {:letter 2}
-  [ 1  5] {:letter 3}
-  [ 1  9] {:letter 3}
-  [13  5] {:letter 3}
-  [13  9] {:letter 3}
   [ 5  1] {:letter 3}
-  [ 9  1] {:letter 3}
-  [ 5 13] {:letter 3}
-  [ 9 13] {:letter 3} })
+  [ 6  2] {:letter 2}
+  [ 7  3] {:letter 2}})
+
+(def TILES 
+  "The special tiles on the board"
+  (into {} (for [[[x y] v] base-tiles, 
+                           [x1 y1]  [[x y] [y x]]   ;; Reflect in nw diagonal
+                           x2       [x1 (- 14 x1)]  ;; Reflect in horizontal
+                           y2       [y1 (- 14 y1)]] ;; Reflect in vertical
+                       [[x2 y2] v])))
 
 ;;;;;;;;;;;;;;  Bag of letters ;;;;;;;;;;;;;;;
 
 (defn make-bag []
   (into [] 
-        (for [[letter value n] letters,  _ (range n)]
+        (for [[letter value n] LETTERS,  _ (range n)]
           [letter value])))
 
 (defn draw-letter [bag]
@@ -182,7 +134,7 @@
 (defn next-square [row-or-column sq]
   (mapv + row-or-column sq))
 
-(def ALL-LETTERS (set (map first letters)))
+(def ALL-LETTERS (set (map first LETTERS)))
 
 (def INITIAL-CROSS-CHECK { :across [ALL-LETTERS 0]
                            :down   [ALL-LETTERS 0] })
