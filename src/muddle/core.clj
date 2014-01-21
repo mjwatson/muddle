@@ -48,10 +48,10 @@
 (def TILES 
   "The special tiles on the board"
   (into {} (for [[[x y] v] base-tiles, 
-                           [x1 y1]  [[x y] [y x]]   ;; Reflect in nw diagonal
-                           x2       [x1 (- 14 x1)]  ;; Reflect in horizontal
-                           y2       [y1 (- 14 y1)]] ;; Reflect in vertical
-                       [[x2 y2] v])))
+                 [x1 y1]   [[x y] [y x]]   ;; Reflect in nw diagonal
+                 x2        [x1 (- 14 x1)]  ;; Reflect in horizontal
+                 y2        [y1 (- 14 y1)]] ;; Reflect in vertical
+             [[x2 y2] v])))
 
 ;;;;;;;;;;;;;;  Bag of letters ;;;;;;;;;;;;;;;
 
