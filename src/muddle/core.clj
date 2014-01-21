@@ -77,20 +77,22 @@
 (defn add-word [tree word]
   (if-let [c (first word)]
     (assoc tree c (add-word (get tree c {}) (rest word)))
-    (assoc tree :complete 1)))
+    (assoc tree :complete :word)))
 
 (defn build-nodes [words]
   (reduce add-word {} words))
 
-(defn words []
-  (with-open [rdr (clojure.java.io/reader "/usr/share/dict/words")]
-    (into [] (line-seq rdr))))
+(defn scrabble-word? [s]
+  "Approximate valid scrabble words: 2+ characters from just lowercase letters."
+  (re-matches #"[a-z][a-z]+" s))
 
-(def nodes (->> (words)
-                (filter #(< 1 (count %)))
-                (filter #(= % (.toLowerCase %)))
-                (map #(.toUpperCase %))
-                build-nodes))
+(defn words [wordlist]
+  (with-open [rdr (clojure.java.io/reader wordlist)]
+    (build-nodes
+      (for [word (line-seq rdr) :when (scrabble-word? word)]
+        (clojure.string/upper-case word)))))
+
+(def nodes (words "/usr/share/dict/words"))
 
 ;;;; The rack ;;;;;
 
