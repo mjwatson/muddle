@@ -380,6 +380,9 @@
     (for [[l r t] (possible-tiles board square rack) :when (and (possible? board square l row-or-column) (contains? node l)) ]
       (->tile board row-or-column r (node l) (conj word [square l t]) (next-square row-or-column square) (or adjacent (adjacent? board square))))))
 
+(defn is-possible-start? [board dir square]
+  (->> square (previous-square dir) (vacant? board)))
+
 (defn tile-is-valid-move? [board rack-size {:keys [square adjacent node rack]}]
   "A valid move requires: 
    * The previous square is vacant (always true due to algorithm choice of starting square)
@@ -395,32 +398,22 @@
 (defn tile->move [t]
   ((juxt :word :rack :row-or-column) t))
 
+
 (defn find-moves [board row-or-column rack node square]
   "Find all valid moves that can be played in this direction from this square"
-  (let [ is-valid-move? (partial tile-is-valid-move? board (count rack)) ]
+  (when (is-possible-start? board row-or-column square)
+   (let [ is-valid-move? (partial tile-is-valid-move? board (count rack)) ]
     (->> (->tile board row-or-column rack node [] square false)
          (tree-seq children? children )
          (filter is-valid-move?)
-         (map tile->move))))
+         (map tile->move)))))
 
-(defn plays [board row rack-letters node]
-  (let [rack          (-> rack-letters make-rack)
-        row-or-column (mapv - (nth row 2) (nth row 1))]
-    (for [square row  :when (->> square (previous-square row-or-column) (vacant? board)) ]
-      (find-moves board row-or-column rack node square))))
-
-(defn board-plays [rack-letters node board]
-  (apply concat 
-         (for [ row   (concat (rows board) (cols board)) 
-               bplay (plays board row rack-letters node)
-               :when bplay]
-           bplay)))
-
-(defn show-board-plays [rl n bd]
-  (doseq [p (board-plays rl n bd)]
-    (show-update bd p)
-    (println "--------------")))
-
+(defn get-moves [rack node board]
+  (for [[dir lines] [[COL (rows board)] [ROW (cols board)]] 
+        line lines
+        start-square line
+        move (find-moves board dir rack node start-square) ]
+    move))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;  Score a move ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -505,7 +498,7 @@
 
 (defn human-move [board rack]
   (println "Enter move: [DOWN|ACROSS]:x:y:word")
-  (or (read-play board (make-rack rack) (read-line)) (recur board rack)))
+  (or (read-play board rack (read-line)) (recur board rack)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Play the game ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -523,14 +516,13 @@
     (rand-nth xs)))
 
 (defn ai-move [board rack]
-  (let [ ps (board-plays rack nodes board) ]
-    (if (not (empty? ps))
-      (rand-max-key (fn [[ws r dn]] (score board dn ws)) ps))))
+  (let [ moves (get-moves rack nodes board) ]
+    (if (not (empty? moves))
+      (rand-max-key (fn [[ws r dn]] (score board dn ws)) moves))))
 
 (defn play-move [{:keys [board players bag] :as game} player-n move?]
-  (let [{:keys [current-score rack] :as player} (players player-n)
-        ps     (board-plays (:rack player) nodes board)]
-    (if-let [ [words r dn :as p] (move? board (:rack player)) ] 
+  (let [{:keys [current-score rack] :as player} (players player-n) ]
+    (if-let [ [words r dn :as p] (move? board (make-rack (:rack player))) ] 
       (let [ new-board          (update-board nodes board words)
              [new-rack new-bag] (take-letters (as-letters r) RACK-SIZE bag)
              new-score          (+ (score board dn words) (:current-score player))
