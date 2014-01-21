@@ -572,18 +572,29 @@
         (recur bag (rest players) (conj out (assoc p :rack rack))))
         [bag out])))
 
+(defn final-score [{players :players}]
+  (let [ total-left (apply simple-score (map :rack players)) ]
+    (for [{:keys [name current-score rack] :as p} players]
+      (update-in p [:current-score] #(if (empty? rack) 
+                                         (+ % total-left)
+                                         (- % (simple-score rack)))))))
+
 (defn start-game [args]
   (let [ players       (read-players args)
          n             (count players)
          board         (create-board)
          bag           (make-bag)
          [bag players] (draw-initial-rack bag players)
-         game          (->Game players board bag 0)]
-    (doseq [_ 
-     (take-while in-play?
-      (reductions play-turn 
-        game
-        (cycle (range n))))])
+         game          (->Game players board bag 0)
+         end-game      (first
+                         (filter 
+                          (comp not in-play?)
+                           (reductions play-turn 
+                            game
+                            (cycle (range n)))))
+         final-scores  (final-score end-game)]
+    (println "Final scores:")
+    (println final-scores)
     (println "Game Over.")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Entry point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
