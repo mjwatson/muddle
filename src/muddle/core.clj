@@ -381,7 +381,12 @@
       (->tile board row-or-column r (node l) (conj word [square l t]) (next-square row-or-column square) (or adjacent (adjacent? board square))))))
 
 (defn is-possible-start? [board dir square]
-  (->> square (previous-square dir) (vacant? board)))
+  ; Mark as a possible start point if
+  ; a) Previous square is vacant 
+  ; b) Playing in this direction can give us an adjacent to the played tiles
+  (and 
+    (->> square (previous-square dir) (vacant? board))
+    (some (partial adjacent? board) (steps board square dir)) ))
 
 (defn tile-is-valid-move? [board rack-size {:keys [square adjacent node rack]}]
   "A valid move requires: 
