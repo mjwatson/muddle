@@ -380,20 +380,34 @@
     (for [[l r t] (possible-tiles board square rack) :when (and (possible? board square l row-or-column) (contains? node l)) ]
       (->tile board row-or-column r (node l) (conj word [square l t]) (next-square row-or-column square) (or adjacent (adjacent? board square))))))
 
-(defn find-words [board row-or-column rack node square]
-  (->> (tree-seq children? children (->tile board row-or-column rack node [] square false))
-       (filter #(->> % :square (vacant? board)))
-       (filter #(->> % :adjacent))
-       (filter #(-> % :node :complete))
-       (filter #(< (count (:rack %)) (count rack)))
-       (map (juxt :word :rack :row-or-column))
-       ))
+(defn tile-is-valid-move? [board rack-size {:keys [square adjacent node rack]}]
+  "A valid move requires: 
+   * The previous square is vacant (always true due to algorithm choice of starting square)
+   * The next square is vacant
+   * At least one play is adjacent to another tile
+   * It forms a complete word
+   * We've played a tile from the rack (ie our rack is less than full)"
+  (and (vacant? board square)
+       adjacent
+       (:complete node)
+       (< (count rack) rack-size)))
+  
+(defn tile->move [t]
+  ((juxt :word :rack :row-or-column) t))
+
+(defn find-moves [board row-or-column rack node square]
+  "Find all valid moves that can be played in this direction from this square"
+  (let [ is-valid-move? (partial tile-is-valid-move? board (count rack)) ]
+    (->> (->tile board row-or-column rack node [] square false)
+         (tree-seq children? children )
+         (filter is-valid-move?)
+         (map tile->move))))
 
 (defn plays [board row rack-letters node]
   (let [rack          (-> rack-letters make-rack)
         row-or-column (mapv - (nth row 2) (nth row 1))]
     (for [square row  :when (->> square (previous-square row-or-column) (vacant? board)) ]
-      (find-words board row-or-column rack node square))))
+      (find-moves board row-or-column rack node square))))
 
 (defn board-plays [rack-letters node board]
   (apply concat 
