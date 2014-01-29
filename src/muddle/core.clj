@@ -382,13 +382,15 @@
   "Pretty print the board to standard out"
   ([board] (print-board board board))
   ([old-board new-board]
-   (let [ numbers (for [n (range (count (rows new-board)))] (mod n 10)) ]
-    (println "")
-    (println " " "|" (clojure.string/join " " numbers))
-    (println (clojure.string/join "" (repeat (inc (* 2 (inc (count (rows new-board))))) "-")))
+   (let [ N       (count (rows new-board)) 
+          numbers (for [n (range N)] (mod n 10))
+          join    clojure.string/join ]
+    (println)
+    (println " " "|" (join " " numbers))
+    (println (join "" (repeat (inc (* 2 (inc N))) "-")))
     (doseq [[n row] (map vector numbers (rows new-board))]
-     (println n "|" (clojure.string/join " " (map (partial show-character old-board new-board) row))))
-    (println ""))))
+     (println n "|" (join " " (map (partial show-character old-board new-board) row))))
+    (println))))
 
 (defn show-update 
     "Pretty print the board and just played word to stdout."
