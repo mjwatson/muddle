@@ -26,6 +26,10 @@
   "The SCORE for each LETTER"
   (into {} (for [[c s _] LETTERS] [c s])))
 
+(def ALL-LETTERS
+  "The set of letters used in the game"
+  (set (map first LETTERS)))
+
 ;;;;;;;;;;;;;;  List of special tiles on the board ;;;;;;;;;;;;;;;
 
 ; Use symmetry to define these based on the NWW part of the board
@@ -56,37 +60,56 @@
 ;;;;;;;;;;;;;;  Bag of letters ;;;;;;;;;;;;;;;
 
 (defn make-bag []
+  "Create the bag of unused letters."
   (into [] 
-        (for [[letter value n] LETTERS,  _ (range n)]
-          [letter value])))
+     (for [[letter value n] LETTERS,  c (repeat n letter)]
+       c)))
+
+(defn drop-nth [n s]
+  "Drop the nth element of the sequence s."
+  (concat (take n s) (drop (inc n) s)))
 
 (defn draw-letter [bag]
-  (let [index (rand-int (count bag))]
-    [ (concat (take index bag) (drop (inc index) bag))
-     (nth bag index) ]))
+  "Draw a random letter from the bag, returning a pair [new-bag letter]."
+  (let [n (rand-int (count bag))]
+    (vector (drop-nth n bag) (nth bag n))))
 
 (defn take-letters [rack rack-size bag]
+  "Take letters from the bag to refill rack upto rack-size, stopping if the bag becomes empty."
   (if (or (= (count rack) rack-size)
           (empty? bag))
-    [(seq rack) bag]
-    (let [[b [l score]] (draw-letter bag)]
-      (recur (conj rack l) rack-size b))))
+    [rack bag]
+    (let [[new-bag letter] (draw-letter bag)]
+      (recur (conj rack letter) rack-size new-bag))))
 
 ;;;;;;; Create the tree of valid words ;;;;;;;;;;;
 
+; Tree of valid words modelled as nested hashes indexed on each character.
+; Complete words are indicated by the adding the :complete keyword as a key.
+;  eg  CAT => { \C { \A { \T {} :complete :word } } }
+;
+; Modelling in this way allows core get-in functions etc to traverse the tree.
+
 (defn add-word [tree word]
-  (if-let [c (first word)]
-    (assoc tree c (add-word (get tree c {}) (rest word)))
-    (assoc tree :complete :word)))
+  (update-in tree word assoc :complete :word))
 
 (defn build-nodes [words]
   (reduce add-word {} words))
+
+(defn get-node [node word] 
+  "The node representing a given word."
+  (get-in node word {}))
+
+(defn is-word? [node word]
+  "Forms a complete word?"
+  (:complete (get-node node word)))
 
 (defn scrabble-word? [s]
   "Approximate valid scrabble words: 2+ characters from just lowercase letters."
   (re-matches #"[a-z][a-z]+" s))
 
 (defn words [wordlist]
+  "Create the tree from provided wordlist, which should have one word per line."
   (with-open [rdr (clojure.java.io/reader wordlist)]
     (build-nodes
       (for [word (line-seq rdr) :when (scrabble-word? word)]
@@ -96,33 +119,41 @@
 
 ;;;; The rack ;;;;;
 
+; Model the current rack as a simple multiset.
+
 (def RACK-SIZE 7)
 
-(defn play [r s]
-  (let [n (r s)]
-    (if (= n 1)
-      (dissoc r s)
-      (assoc  r s (dec n)))))
-
-(defn get-letters [r] (keys r))
-
-(defn has-letter? [r s] (contains? r s))
-
-(defn make-rack [s] (frequencies s))
+(defn make-rack [s]
+  "Make a rack from the provided sequence."
+  (frequencies s))
 
 (defn get-rack-size [r]
+  "The current size of the rack."
   (reduce + (vals r)))
 
-(defn as-letters [r] 
+(defn play [r c]
+  "Play character c from rack r, returning the updated rack."
+  (let [n (r c)]
+    (if (= n 1)
+      (dissoc r c)
+      (assoc  r c (dec n)))))
+
+(defn has-letter? [r c]
+  "Does the rack contain letter c."
+  (contains? r c))
+
+(defn get-letters [r]
+  "The unique letters in the rack."
+  (keys r))
+
+(defn as-letters [r]
+  "The letters in the rack as a sequence, including duplicates." 
   (for [[k n] r, c (repeat n k)] c))
 
-
-;;;;;;;; Data structures to model the board ;;;;;;;
-
+(defn print-rack [r]
+  (println (str "Rack: " (if (not (empty? r)) r "<EMPTY>"))))
 
 ;;;;;;;;;;;;;; Model the board ;;;;;;;;;;;;;;;;;
-
-;; The model is easier if we create sentinel squares that reflect the square round the edge of the board.
 
 (def BOARD-SIZE 15)
 
@@ -130,178 +161,159 @@
 
 (def COL [1 0])
 
-(defn previous-square [row-or-column sq]
-  (mapv - sq row-or-column))
+(def DIRECTIONS [[0 1] [0 -1] [1 0] [-1 0]])
 
-(defn next-square [row-or-column sq]
-  (mapv + row-or-column sq))
+;; Model the board as a nested vector of Squares
 
-(def ALL-LETTERS (set (map first LETTERS)))
-
-(def INITIAL-CROSS-CHECK { :across [ALL-LETTERS 0]
-                           :down   [ALL-LETTERS 0] })
-
-(def DIRECTION { COL :down
-                 ROW :across })
-
-(defprotocol ISquare 
-  ; The content of the square
-  (content   [sq])
-  ; Is it possible to play l here
-  ; Yes if square is empty or already contains l
-  (possible [sq l dn])
-  ; Xscore for letter played here
-  (x-score [sq dn])
-  ; Can anything be played here
-  (alive [sq]))
-
-(defrecord Square [c cross-checks]
-  ISquare
-  (content   [sq]   c)
-  (alive     [sq]   true)
-  (possible  [sq l dn] 
-    (or (= c l)  
-        (and (= c nil) (let [[cx n] (dn cross-checks)] (cx l)))))
-  (x-score [sq dn]
-    (let [[cx n] (dn cross-checks)] n)))
-
-(defrecord SentinelSquare []
-  ISquare
-  (content   [sq]   nil)
-  (possible  [sq l dn] false)
-  (x-score   [sq dn] 0)
-  (alive     [sq]   false))
-
-(def sentinel (->SentinelSquare))
-
-;; Model the board as a nested vector of ISquares
-
-(defn value [board square] 
-  (get-in board square sentinel))
+(defrecord Square [content cross])
 
 (defn get-value [board square]
-  (-> (value board square) content))
+  "The letter in that square or nil if empty."
+  (:content (get-in board square)))
 
-(defn vacant? [board square] 
-  (-> (value board square) content nil?))
+(defn vacant? [board square]
+  "Is the square vacant?"
+  (nil? (get-value board square)))
 
-(defn possible? [board square l dn] 
-  (-> (value board square) (possible l (DIRECTION dn))))
+(defn on-board? [board square] 
+  "Is the square on the board?"
+  (not (nil? (get-in board square))))
 
-(defn alive? [board square] 
-  (-> (value board square) alive))
+(defn get-cross-word [board square dir]
+  (-> (get-in board square) :cross (get dir)))
 
-(defn cross-score [board dn square]
-  (-> (value board square) (x-score (DIRECTION dn))))
+(defn valid-cross-word? [board square l dir]
+  "Would this letter make a valid cross-word?"
+  ((:cross-letters (get-cross-word board square dir)) l))
+
+(defn cross-score [board dir square]
+  "The score for the cross word, excluding the value of the letter just played."
+  (:cross-score (get-cross-word board square dir)))
 
 (defn has-cross-word? [board dn square]
+  "Is there a cross-word in this position, or is the square not connected (ie both neighbours are blank)."
   (< 0 (cross-score board dn square)))
 
-(defn make-board 
-  ([n] 
-   (make-board n (repeat (* n n) nil)))
-  ([n rows]
-   (if (= (count rows) (* n n))
-     (mapv vec (partition n (map #(->Square (if (not= \_ %) %) INITIAL-CROSS-CHECK) rows))))))
+(defn possible? [board square l dir]
+  "Can this letter be placed here?"
+  (if (vacant? board square)
+    (valid-cross-word? board square l dir)
+    (= l (get-value board square))))
+
+(def INITIAL-CROSS-CHECK { ROW { :cross-letters ALL-LETTERS :cross-score 0}
+                           COL { :cross-letters ALL-LETTERS :cross-score 0}})
 
 (defn create-board []
-  (make-board BOARD-SIZE))
+  "Create the board as nested vectors of squares."
+  (mapv vec
+    (for [x (range BOARD-SIZE)]
+      (for [y (range BOARD-SIZE)]
+        (->Square nil INITIAL-CROSS-CHECK)))))
 
 (defn rows [board] 
+  "The rows of the board as seqs of [x,y] coordinates."
   (let [n (count board)]
     (for [r (range n)] 
       (for [c (range n)]
         [r c]))))
 
 (defn cols [board]
+  "The columns of the board as seqs of [x,y] coordinates."
   (apply mapv vector (rows board)))
+
+;;;;;;;;;;;;;;;;;; Utility concepts ;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn simple-score [& words]
+  "The basic score for the given words (ignoring double letters etc)."
+  (reduce + (map SCORES (mapcat seq words))))
+
+(defn previous-square [dir sq]
+  "The previous square in the given direction."
+  (mapv - sq dir))
+
+(defn next-square [dir sq]
+  "The next square in the given direction."
+  (mapv + sq dir))
+
+(defn steps [bd sq dir]
+  "The squares from sq to the edge of the board in the given direction."
+  (take-while (partial on-board? bd) 
+              (drop 1 (iterate (partial next-square dir) sq))))
+
+(defn is-valid-word-boundary? [board square]
+  "Is this square a valid boundary for a word - 
+    that is it it the edge of the board or an empty square"
+  (or (not (on-board? board square))
+      (vacant? board square)))
 
 ;;;;;;;;;;;;;;;;;; Update the board to reflect latest move ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn steps [bd sq dn]
-  (take-while (partial get-in bd) 
-              (drop 1 
-                    (iterate (partial next-square dn) sq))))
 
-(defn get-active-letters [bd sq dn]
-  (map #(get-value bd %)
-       (take-while #(and (alive? bd %) (get-value bd %)) (steps bd sq dn))))
+(defn get-active-letters [bd sq dir]
+  "The played letters that would be part of a word from given square and direction."
+  (map #(get-value bd %) (take-while #(not (is-valid-word-boundary? bd %)) (steps bd sq dir))))
 
 (defn get-prefix [bd sq dn]
+  "The prefix of already played letters if we play on given square"
   (reverse (get-active-letters bd sq (mapv #(* % -1) dn))))
 
 (defn get-suffix [bd sq dn]
+  "The suffix of already played letters if we play on given square"
   (get-active-letters bd sq dn))
 
-(defn get-node [n w] 
-  (get-in n w {}))
-
 (defn get-letters-that-make-word [nodes prefix suffix]
+  "The set of letters that make a whole word with given prefix and suffix."
   (into #{}
     (if-let [ node (get-node nodes prefix) ]
-      (for [ c (keys node) :when (:complete (get-node (node c) suffix)) ]
+      (for [ c (keys node) :when (is-word? (node c) suffix) ]
         c))))
 
-(defn simple-score [& words]
-  (reduce + (map SCORES (mapcat seq words))))
-
 (defn calculate-possible [nodes bd sq dn]
+  "Calculate the letters that generate valid cross-words, with the associated scores."
   (let [ prefix  (get-prefix bd sq dn)
          suffix  (get-suffix bd sq dn) 
          value   (simple-score prefix suffix)
          matches (if (and (empty? prefix) (empty? suffix))
                     ALL-LETTERS
                     (get-letters-that-make-word nodes prefix suffix)) ]
-    [matches value]))
+    {:cross-letters matches :cross-score value}))
 
 (defn get-possible [nodes bd sq]
-  { :across (calculate-possible nodes bd sq COL)
-    :down   (calculate-possible nodes bd sq ROW)} )
-
-(defn update-possible [bd nodes sq]
-  (if (alive? bd sq)
-    (->Square (get-value bd sq) (get-possible nodes bd sq))))
-
-(defn all-squares [bd]
-  (apply concat (rows bd)))
-
-(defn update-all-possible 
-  ([nodes bd] 
-   (update-all-possible nodes bd (all-squares bd)))
-  ([nodes bd sqs]
-   (reduce #(assoc-in %1 %2 (update-possible %1 nodes %2)) bd sqs)))
-
-(defn empty-square? [bd sq]
-  (nil? (get-value bd sq)))
+  "Calculate the letters that generate valid cross-words in both-directions, with the associated scores."
+  { ROW (calculate-possible nodes bd sq COL)
+    COL (calculate-possible nodes bd sq ROW)} )
 
 (defn empty-neighbour [bd sq dn]
-  (first (filter (partial empty-square? bd) (steps bd sq dn))))
+  "The first vacant square in the given direction."
+  (first (filter (partial vacant? bd) (steps bd sq dn))))
 
 (defn empty-neighbours [bd sqs]
+  "Find the neighbouring empty squares in all directions to the given starting squares."
   (into #{}
-        (for [sq sqs, dn [[0 1] [0 -1] [1 0] [-1 0]] :let [n (empty-neighbour bd sq dn)] :when n]
+        (for [sq sqs, dir DIRECTIONS  :let [n (empty-neighbour bd sq dir)] :when n]
           n)))
 
-(defn has-neighbour? [bd sq]
+(defn has-active-neighbour? [bd sq]
+  "Is this square next to an already populated square?"
   (some identity 
-    (for [dn [[0 1] [0 -1] [1 0] [-1 0]]]
-      (get-value bd (next-square dn sq)))))
-
+    (for [dir DIRECTIONS]
+      (get-value bd (next-square dir sq)))))
 
 (defn update-board-letters [board words]
+  "Update the board with the played letter."
   (reduce (fn [bd [sq val]] (assoc-in bd sq (->Square val nil))) board words))
 
-(defn update-crosswords [bd nodes words]
-  (let [sqs        (map first words)
-        neighbours (empty-neighbours bd sqs)]
-    (update-all-possible nodes bd neighbours)))
+(defn update-crosswords [bd nodes word]
+  "Update the valid cross-words - for speed only updating squares that are are the empty neighbours of the played word."
+   (reduce (fn [b sq] (assoc-in b sq (->Square (get-value b sq) (get-possible nodes b sq)))) 
+           bd 
+           (empty-neighbours bd (map first word))))
 
-(defn update-board [nodes board words]
-  (-> board (update-board-letters words)
-      (update-crosswords nodes words)))
-
-(defn print-rack [r]
-  (println (str "Rack: " (if (not (empty? r)) r "<EMPTY>"))))
+(defn update-board [nodes board word]
+  "Update the board to reflect the played word."
+  (-> board 
+      (update-board-letters word)
+      (update-crosswords nodes word)))
 
 ;;;;;;;;;;;;;;; Display the board and latest go ;;;;;;;;;;;;;;;;;;;
 
@@ -332,7 +344,8 @@
 (defn show-character [old-bd  new-bd sq] 
     (str (get-format old-bd new-bd sq) (or (get-value new-bd sq) \_) CLEAR ))
 
-(defn print-board 
+(defn print-board
+  "Pretty print the board to standard out"
   ([board] (print-board board board))
   ([old-board new-board]
    (let [ numbers (for [n (range (count (rows new-board)))] (mod n 10)) ]
@@ -344,78 +357,90 @@
     (println ""))))
 
 (defn show-update [board word]
+    "Pretty print the board and just played word to stdout."
     (print-board board (update-board nodes board word)))
 
 ;;;;;;;;;;;;;;;;;;;;;;  Search for all possible word moves ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; We dynamically create a tree of all possible plays and filter out the ones that are real words
-
-(defprotocol ITree
-  (children? [tree])
-  (children  [tree]))
-
 (defn play-as [c]
+  "The letters that tile c can be played as."
   (if (= c :blank)
     ALL-LETTERS
     [c]))
 
 (defn possible-tiles 
   "Returns the possible characters that can be placed on a square, with the rack that would be left.
-  Two possibilities:
-  * If the square is vacant, we can play anything from the rack.
-  * If the square is already full, then thats the only choice."
+   Two possibilities:
+   * If the square is vacant, we can play anything from the rack.
+   * If the square is already full, then thats the only choice."
   [board square rack]
   (if (vacant? board square)
     (for [l (get-letters rack) c (play-as l) ] [c (play rack l) l])
     [[(get-value board square) rack (get-value board square)]]))
 
 (defn adjacent? [board square]
+  "Is this square next to an already populated square?"
   (or (= square [7 7])
-      (has-neighbour? board square)))
+      (has-active-neighbour? board square)))
 
+(defprotocol ITree
+  "An abstract tree protocol."
+  (children? [tree])
+  (children  [tree]))
 
-(defrecord tile [board row-or-column rack node word square adjacent]
+; Play represents the search-space of possible words as a tree.
+; Each node represents the start of a valid scrabble word that can be played on the board, with the remaining rack and board.
+; The children of each node represent the next letter that can be played on the board while still being part of a valid word.
+(defrecord Play 
+  [board dir rack node word square adjacent]
   ITree
   (children? [_]
-    (alive? board square))
+    (on-board? board square))
   (children [_]
-    (for [[l r t] (possible-tiles board square rack) :when (and (possible? board square l row-or-column) (contains? node l)) ]
-      (->tile board row-or-column r (node l) (conj word [square l t]) (next-square row-or-column square) (or adjacent (adjacent? board square))))))
+    (for [[l r t] (possible-tiles board square rack) :when (and (possible? board square l dir) (contains? node l)) ]
+      (->Play board 
+              dir 
+              r 
+              (node l) 
+              (conj word [square l t]) 
+              (next-square dir square) 
+              (or adjacent (adjacent? board square))))))
 
 (defn is-possible-start? [board dir square]
-  ; Mark as a possible start point if
-  ; a) Previous square is vacant 
-  ; b) Playing in this direction can give us an adjacent to the played tiles
+  "Is this a possible start of a word - that is is:
+   a) is the previous square a valid word boundary 
+   b) can playing in this direction can reach squares adjacent to the played tiles"
   (and 
-    (->> square (previous-square dir) (vacant? board))
+    (->> square (previous-square dir) (is-valid-word-boundary? board))
     (some (partial adjacent? board) (steps board square dir)) ))
 
-(defn tile-is-valid-move? [board rack-size {:keys [square adjacent node rack]}]
+(defn is-valid-move? [board rack-size {:keys [square adjacent node rack]}]
   "A valid move requires: 
-   * The previous square is vacant (always true due to algorithm choice of starting square)
-   * The next square is vacant
+   * The previous square is a valid word-boundard (always true due to is-possible-start?)
+   * The next square is a word-boundary
    * At least one play is adjacent to another tile
    * It forms a complete word
    * We've played a tile from the rack (ie our rack is less than full)"
-  (and (vacant? board square)
+  (and (is-valid-word-boundary? board square)
        adjacent
        (:complete node)
        (< (count rack) rack-size)))
   
-(defn tile->move [t]
-  ((juxt :word :rack :row-or-column) t))
+(defn play->move [t]
+  "Convert a Play to a move."
+  ((juxt :word :rack :dir) t))
 
-
-(defn find-moves [board row-or-column rack node square]
+(defn find-moves [board dir rack node square]
   "Find all valid moves that can be played in this direction from this square"
-  (when (is-possible-start? board row-or-column square)
-   (let [ is-valid-move? (partial tile-is-valid-move? board (count rack)) ]
-    (->> (->tile board row-or-column rack node [] square false)
+  (when (is-possible-start? board dir square)
+   (let [ is-valid-move? (partial is-valid-move? board (count rack)) ]
+    (->> (->Play board dir rack node [] square false)
          (tree-seq children? children )
          (filter is-valid-move?)
-         (map tile->move)))))
+         (map play->move)))))
 
 (defn get-moves [rack node board]
+  "All moves for a given rack and board."
   (for [[dir lines] [[COL (rows board)] [ROW (cols board)]] 
         line lines
         start-square line
@@ -431,9 +456,11 @@
        1))
 
 (defn letter-multiplier [bd sq]
+  "The letter multiplier for a square (double letter etc)."
   (get-multiplier :letter bd sq))
 
 (defn word-multiplier [bd sq]
+  "The word multiplier for a square (double word etc)."
   (get-multiplier :word bd sq))
 
 (defn rack-bonus 
@@ -445,11 +472,13 @@
     0))
 
 (defn score-word [bd word]
+  "Score the word played."
   (let [multiplier (reduce * (for [[sq c t] word] (word-multiplier bd sq)))
         score      (reduce + (for [[sq c t] word] (* (letter-multiplier bd sq) (SCORES t))))]
     (* multiplier score)))
 
 (defn score-cross-words [bd dn word]
+  "Score the cross-words."
   (reduce +
     (for [[sq c t] word]
       (if (and (vacant? bd sq) (has-cross-word? bd dn sq))
@@ -459,17 +488,13 @@
         0))))
 
 (defn score [bd dn word]
+  "The score for playing the word on the given board."
   (+ (rack-bonus bd word)
      (score-word bd word)
      (score-cross-words bd dn word)))
 
 (defn show-score [bd dn word]
-  (println "Score: " (score bd dn word) 
-           "["
-              (rack-bonus bd word) ","
-              (score-word bd word) ","
-              (score-cross-words bd dn word) 
-            "]")) 
+  (println "Score: " (score bd dn word)))
 
 ;;;;;;;;;;;;;;;;;   Command line user ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -479,16 +504,19 @@
 (def DN-MAP { "DOWN" COL, "ACROSS" ROW })
 
 (defn read-word [s]
+  "Read the word to play from stdin."
   (if-let [[_ dir-word x y ls] (parse-line s)]
    (let [dn                 (DN-MAP dir-word)
          word               (map vector (iterate (partial next-square dn) [(Integer. x) (Integer. y)]) ls)]
     [dn word])))
 
 (defn valid-play? [bd word dn]
+  "Can this word be played?"
   (and (:complete (get-node nodes (map second word)))
        (every? (fn [[sq l]] (possible? bd sq l dn)) word)))
 
 (defn from-rack [board word rack]
+  "Can this word be played from this rack, possibly using blanks?"
   (loop [word word r rack out []]
     (if-let [[sq l] (first word)]
       (cond (not (vacant? board sq))  (recur (rest word) r               (conj out [sq l l]))
@@ -498,12 +526,14 @@
       [r out])))
 
 (defn read-play [board rack line]
+  "Try to read a word from stdin, and apply validation."
   (when-let [ [dn word] (read-word line) ]
     (when (valid-play? board word dn)
       (if-let [ [new-rack played-word] (from-rack board word rack) ]
         [played-word new-rack dn]))))
 
 (defn human-move [board rack]
+  "Read a human move from standard in, repeating until a valid move is supplied."
   (println "Enter move: [DOWN|ACROSS]:x:y:word")
   (or (read-play board rack (read-line)) (recur board rack)))
 
@@ -517,17 +547,20 @@
        (< (:unable-to-play game) (count (:players game)))))
 
 (defn rand-max-key [f s]
+  "Choose a random element in s for which f is maximised"
   (let [ x  (apply max-key f s)
          v  (f x)
          xs (filter #(= v (f %)) s) ]
     (rand-nth xs)))
 
 (defn ai-move [board rack]
+  "Choose an AI move that maximises immediate score."
   (let [ moves (get-moves rack nodes board) ]
     (if (not (empty? moves))
       (rand-max-key (fn [[ws r dn]] (score board dn ws)) moves))))
 
 (defn play-move [{:keys [board players bag] :as game} player-n move?]
+  "Play a move using the provided move? function to determine the move."
   (let [{:keys [current-score rack] :as player} (players player-n) ]
     (if-let [ [words r dn :as p] (move? board (make-rack (:rack player))) ] 
       (let [ new-board          (update-board nodes board words)
@@ -540,6 +573,7 @@
 
 
 (defn play-turn [game player-n]
+  "Play a turn and display to stdout."
   (let [player (-> game :players (get player-n))]
    (println "-------------------------------")
    (println "Player:" (:name player))
@@ -563,11 +597,13 @@
 (def DEFAULT-PLAYERS [{ :name "AI" :kind :ai :current-score 0 }])
 
 (defn read-players [args]
+  "Read the players from the program arguments."
   (if (empty? args)
     DEFAULT-PLAYERS
     (map create-player args)))
 
 (defn draw-initial-rack [bag players]
+  "Draw the initial tiles for each player."
   (loop [bag bag players players out []]
     (if-let [p (first players)]
       (let [[rack bag] (take-letters '() RACK-SIZE bag)]
@@ -575,6 +611,7 @@
         [bag out])))
 
 (defn final-score [{players :players}]
+  "Calculate the final score - removing points for tiles left to play etc."
   (let [ total-left (apply simple-score (map :rack players)) ]
     (for [{:keys [name current-score rack] :as p} players]
       (update-in p [:current-score] #(if (empty? rack) 
@@ -582,6 +619,7 @@
                                          (- % (simple-score rack)))))))
 
 (defn start-game [args]
+  "Play a game using std-in and std-out."
   (let [ players       (read-players args)
          n             (count players)
          board         (create-board)
